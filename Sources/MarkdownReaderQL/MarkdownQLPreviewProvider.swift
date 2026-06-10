@@ -10,6 +10,7 @@ private let logger = Logger(subsystem: "com.markdownreader.app.QuickLook", categ
 final class MarkdownQLPreviewProvider: NSViewController, QLPreviewingController {
     private var webView: WKWebView!
     private var navigationDelegate: QLNavigationDelegate?
+    private var mermaidHandler: MermaidMessageHandler?
 
     override func loadView() {
         view = NSView()
@@ -23,6 +24,10 @@ final class MarkdownQLPreviewProvider: NSViewController, QLPreviewingController 
         let resourceSearchPaths = Self.resolveResourceSearchPaths()
         let schemeHandler = QLSchemeHandler(resourceSearchPaths: resourceSearchPaths)
         config.setURLSchemeHandler(schemeHandler, forURLScheme: "mr")
+
+        let mermaidMsgHandler = MermaidMessageHandler()
+        mermaidHandler = mermaidMsgHandler
+        config.userContentController.add(mermaidMsgHandler, name: "mermaidDone")
 
         webView = WKWebView(frame: .zero, configuration: config)
         webView.translatesAutoresizingMaskIntoConstraints = false
@@ -117,11 +122,20 @@ final class MarkdownQLPreviewProvider: NSViewController, QLPreviewingController 
 
             weakSelf.navigationDelegate?.forceCompleteIfPending()
 
-            let navDelegate = QLNavigationDelegate { error in
+            // When Mermaid is present, skip completion on didFinish — Mermaid.render() is async
+            // and its .then() callbacks haven't run yet when navigation finishes. The timeout
+            // below is the authoritative completion signal for Mermaid pages.
+            let navDelegate = QLNavigationDelegate(skipCompleteOnDidFinish: hasMermaid) { error in
                 handler(error)
             }
             weakSelf.navigationDelegate = navDelegate
             webView.navigationDelegate = navDelegate
+
+            if hasMermaid {
+                weakSelf.mermaidHandler?.completion = { [weak navDelegate] in
+                    navDelegate?.forceCompleteIfPending()
+                }
+            }
 
             if isDark {
                 webView.underPageBackgroundColor = NSColor(red: 0.094, green: 0.094, blue: 0.102, alpha: 1.0)
@@ -129,7 +143,7 @@ final class MarkdownQLPreviewProvider: NSViewController, QLPreviewingController 
 
             webView.loadHTMLString(html, baseURL: baseURL)
 
-            let timeout: TimeInterval = hasMermaid ? 2.0 : 1.0
+            let timeout: TimeInterval = hasMermaid ? 3.0 : 1.0
             DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
                 navDelegate.forceCompleteIfPending()
             }
@@ -250,9 +264,11 @@ private final class QLSchemeHandler: NSObject, WKURLSchemeHandler {
 
 private final class QLNavigationDelegate: NSObject, WKNavigationDelegate, @unchecked Sendable {
     private let completionHandler: @Sendable (Error?) -> Void
+    private let skipCompleteOnDidFinish: Bool
     private var handled = false
 
-    init(completionHandler: @escaping @Sendable (Error?) -> Void) {
+    init(skipCompleteOnDidFinish: Bool = false, completionHandler: @escaping @Sendable (Error?) -> Void) {
+        self.skipCompleteOnDidFinish = skipCompleteOnDidFinish
         self.completionHandler = completionHandler
     }
 
@@ -265,6 +281,10 @@ private final class QLNavigationDelegate: NSObject, WKNavigationDelegate, @unche
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard !handled else { return }
+        if skipCompleteOnDidFinish {
+            logger.info("WebView didFinish — deferring to timeout for async rendering")
+            return
+        }
         handled = true
         logger.info("WebView didFinish navigation")
         completionHandler(nil)
@@ -282,6 +302,18 @@ private final class QLNavigationDelegate: NSObject, WKNavigationDelegate, @unche
         handled = true
         logger.error("WebView didFailProvisionalNavigation: \(error)")
         completionHandler(error)
+    }
+}
+
+// MARK: - Mermaid completion signal
+
+private final class MermaidMessageHandler: NSObject, WKScriptMessageHandler, @unchecked Sendable {
+    var completion: (() -> Void)?
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        let cb = completion
+        completion = nil
+        cb?()
     }
 }
 

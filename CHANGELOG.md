@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [2.0.7] - 2026-06-10
+
+### 修复
+
+- **Quick Look 预览 Mermaid 图表不渲染**：修复构建脚本误删 QL Extension bundle 中 `mermaid.min.js` 的问题；同时修复 `didFinish` 过早触发完成回调导致 Mermaid 异步渲染未完成即截图的时序问题
+
 ## [2.0.6] - 2026-06-09
 
 ### 修复

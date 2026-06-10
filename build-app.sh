@@ -151,7 +151,7 @@ if [[ -n "$SIGN_IDENTITY" ]]; then
         # 开发模式：如果指定了签名身份则使用，否则 ad-hoc
         if [[ "$SIGN_IDENTITY" == "auto" ]]; then
             # 优先查找 Apple Development / Developer ID Application 证书
-            RESOLVED_IDENTITY=$(security find-identity -v -p codesigning | grep -E "Apple Development|Developer ID Application" | head -1 | sed -n 's/.*"\(.*\)"/\1/p')
+            RESOLVED_IDENTITY=$(security find-identity -v -p codesigning | grep -E "Apple Development|Developer ID Application" | head -1 | sed -n 's/.*"\(.*\)"/\1/p' || true)
             if [[ -n "$RESOLVED_IDENTITY" ]]; then
                 SIGN_IDENTITY="$RESOLVED_IDENTITY"
                 echo "🔑 开发模式: 使用检测到的签名身份: $SIGN_IDENTITY"
@@ -261,11 +261,6 @@ if [ -d "${BUILD_DIR}/${APP_NAME}_MarkdownReader.bundle" ]; then
         echo "🗑️  移除 QL Extension bundle 中冗余 AppIcon"
     fi
 
-    # QL Extension 不需要 mermaid（Quick Look 预览不渲染复杂图表，省 3.1 MB）
-    if [ -f "${QL_BUNDLE}/Resources/js/mermaid.min.js" ]; then
-        rm -f "${QL_BUNDLE}/Resources/js/mermaid.min.js"
-        echo "🗑️  移除 QL Extension bundle 中 mermaid.min.js（省 ~3.1 MB）"
-    fi
 fi
 
 # 复制依赖包的资源 bundle 到 Extension

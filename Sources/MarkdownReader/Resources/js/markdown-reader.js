@@ -220,6 +220,7 @@
       });
 
       let idx = 0;
+      const promises = [];
       mermaidBlocks.forEach(block => {
         const pre = block.parentElement;
         if (!pre || pre.tagName !== 'PRE') return;
@@ -228,7 +229,7 @@
         container.className = 'mermaid-container';
         container.dataset.mermaidSource = source;
         const id = 'mermaid-' + (++idx) + '-' + Math.random().toString(36).slice(2);
-        mermaid.render(id, source).then(({ svg, bindFunctions }) => {
+        const p = mermaid.render(id, source).then(({ svg, bindFunctions }) => {
           container.innerHTML = svg;
           if (bindFunctions) bindFunctions(container);
         }).catch(err => {
@@ -236,7 +237,11 @@
           const detail = (err && err.message) ? String(err.message).substring(0, 200) : String(err).substring(0, 200);
           MR._showMermaidError(container, '渲染失败：' + detail);
         });
+        promises.push(p);
         pre.replaceWith(container);
+      });
+      Promise.allSettled(promises).then(() => {
+        window.webkit?.messageHandlers?.mermaidDone?.postMessage(null);
       });
     },
 
